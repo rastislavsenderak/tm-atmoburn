@@ -2,7 +2,11 @@
 This is Tampermonkey (https://www.tampermonkey.net/) script for Atmoburn game(https://www.atmoburn.com/).
 
 ## What it does
-Simple colony and fleet tagging script. Just that.
+Simple colony and fleet tagging script. Just that. See example screenshot bellow.
+
+## How to install
+- You should have Tampermonkey (https://www.tampermonkey.net/) or equivalent
+- Open `abs-tag-manager.user.js` file and go to "Raw" in your browser - Tampermonkey should offer you "Install" button - and thats it.
 
 ## How to use
  1. Open colony or fleet screen.
