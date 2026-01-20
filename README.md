@@ -1,2 +1,2 @@
 # tm-atmoburn
-Tampermonkey scripts for Atmoburn game
+Tampermonkey scripts for Atmoburn game - see subfolders.
