@@ -8,6 +8,7 @@
 // @exclude    	 https://*.atmoburn.com/extras/view_universe.php*
 // @updateURL    https://github.com/rastislavsenderak/tm-atmoburn/raw/refs/heads/main/abs-tag-manager/abs-tag-manager.user.js
 // @downloadURL  https://github.com/rastislavsenderak/tm-atmoburn/raw/refs/heads/main/abs-tag-manager/abs-tag-manager.user.js
+// @homepageURL  https://github.com/rastislavsenderak/tm-atmoburn/blob/main/abs-tag-manager/README.md
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==

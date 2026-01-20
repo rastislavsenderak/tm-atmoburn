@@ -15,8 +15,8 @@ Simple colony and fleet tagging script. Just that. See example screenshot bellow
  4. Refresh screen and check your colony and/or fleet menu (left/right column)
 
 ## How it is implemented
-This script uses only local (script) storage, i.e. GM_setValue/GM_getValue.
-Once installed, see your Tampermonkey menu / Storage tab, where you can see your (raw) data (in JSON format). You can even edit it.
+- This script uses only local (script) storage, i.e. GM_setValue/GM_getValue. Once installed, in your Tampermonkey menu / Storage tab you can see your data in JSON format. You can even edit it.
+- You don't lose your data when your browser history/cookies get deleted. You lose your data when you **unistall** the script.
 
 ## Status
 > [!WARNING]
@@ -31,7 +31,7 @@ Once installed, see your Tampermonkey menu / Storage tab, where you can see your
 - show tags in other contexts - colony/fleet overview, global targes etc
 - add filtering by tags - hide all NOT having the tag, hide all HAVING the tag
 - more colors/custom colors, customize size/style for tags
-- AUTOTAGS! Add criteria for autotagging, for example 
+- AUTOTAGS! Add criteria for autotagging, for example
   - when happines < 40 then add "Health" red tag
   - when iron < 10k then add "RES" red tag
   - when gold > 100k then add "RES" green tag
