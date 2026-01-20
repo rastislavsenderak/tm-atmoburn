@@ -35,4 +35,4 @@ Once installed, see your Tampermonkey menu / Storage tab, where you can see your
 
 ## Screenshots
 As an example:
-![Example screenshot](doc/Screenshot 2026-01-20 220205.png)
+![Example screenshot](doc/Screenshot1.png)
