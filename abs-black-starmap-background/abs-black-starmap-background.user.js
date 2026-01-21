@@ -7,9 +7,9 @@
 // @homepageURL  https://github.com/seko70/tm-atmoburn/blob/main/abs-black-starmap-background/README.md
 // @license      MIT
 // @match        https://*.atmoburn.com/extras/view_universe.php*
-// @version      2.0.2
+// @version      2.0.3
 // @grant        none
 // ==/UserScript==
 
-document.getElementById("starMapContainer")?.style.backgroundImage = "none";
+document.getElementById("starMapContainer").style.backgroundImage = "none";
 document.body.style.backgroundColor="#000000";
