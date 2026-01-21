@@ -1,0 +1,48 @@
+# AtmoBurn Services - AWACS
+This is Tampermonkey (https://www.tampermonkey.net/) script for Atmoburn game (https://www.atmoburn.com/).
+
+## What it does
+UI for abs-archivist - display nearest fleets, colonies, rally points, wormholes etc in various contexts; uses data produced by abs-archivist.
+> [!NOTE]
+> You need **abs-archivist** script to create/collect the data!
+
+## How to install
+- You should have Tampermonkey (https://www.tampermonkey.net/) or equivalent
+- Open `abs-awacs.user.js` file and go "Raw" in your browser - Tampermonkey should offer you "Install" button - and thats it.
+
+## How to use
+- Open colony or fleet screen.
+- Click on AWACS menu - all presentable objects are ... presented.
+  - Note "Reference point" in the top left corner - it's a base (coordinates) for distance and direction info; it can be changed, or changes automaticall when appropriate
+- Use filterig buttons - by "Relation" and/or by "Type", for example:
+  - Press button to show/hide specific objects
+  - Press CTRL-button to show ONLY this specific objects
+- Use header text filters to filter by name, player, ...
+- Use sorting arrow in some headers to sort
+- Object actions:
+  - Press "compass" icon 🧭 (if present) to open detail screen (your fleet, or your colony)
+  - Press "laynch" icon 🚀️ (if present) to move your fleet to selected object (colony, enemy fleet...)
+  - Press "pointing hand" icon 👆 (if present) to make it reference point
+- In general, there are tooltips with details and/or explanation what it is or what id does
+- More to come... see TODO list.
+
+## How it is implemented
+- No remote calls, no screen parsing - just UI for data (already) stored in you local (browser) IndexedDB called "AtmoBurnServicesDB".
+- Uses 3rd party "Tabulator" library (https://tabulator.info/)
+
+## Status
+> [!WARNING]
+> This is still under development. Beware!
+
+## Known bugs
+- ... (TBD)
+
+## TODO list
+- ... (TBD)
+
+## Screenshots
+Example1 - all object (colonies, fleets, rally points, wormholes...) - by default, sorted by distance from reference point (in this case, one of my fleets):
+![Example screenshot](doc/Screenshot1.png)
+
+Example2 - only my colonies (note that rows - and some columns as well - are hidden automatically):
+![Example screenshot](doc/Screenshot2.png)
