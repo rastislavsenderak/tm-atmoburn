@@ -33,7 +33,7 @@ Sometimes, when global coordinates are not displayed (and not known already), AP
 Received data is stored/cached in DB as well (trying to be nice to server) and never againe requested from server.
 
 > [!NOTE]
-> This script does not make other queries except API calls mentioned above. 
+> This script does not make other queries except API calls mentioned above.
 
 What entities are parsed and saved (created or updated):
 - Colonies (name, ID, global coordinates, system, world, pop, size, player, relation)
@@ -79,3 +79,6 @@ When entities are deleted:
   - many more :-)
 - Other fleets (then your own) are not deleted, ever. Trying to formulate criteria/events for deleting the fleet (battle logs, expired after X days when not updated, etc) in general.
 - Maybe fix Rally Point ID; make separate column for "empire" (1 or 0) and use internal RP ID that game exhibits (by edit/delete buttons)
+- Better treatment of "confederated fleets" - they are not "mine" but I can see them in my "Fleet menu" etc
+- Include unclaimed POIs?
+- Support for "fleet destination"

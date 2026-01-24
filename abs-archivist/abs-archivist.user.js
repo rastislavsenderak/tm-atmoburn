@@ -2,7 +2,7 @@
 // @name         AtmoBurn Services - Archivist
 // @namespace    sk.seko
 // @license      MIT
-// @version      0.10.1
+// @version      0.10.2
 // @description  Parses and stores various entities while browsing AtmoBurn; see Tampermonkey menu for some actions; see abs-awacs for in-game UI
 // @updateURL    https://github.com/seko70/tm-atmoburn/raw/refs/heads/main/abs-archivist/abs-archivist.user.js
 // @downloadURL  https://github.com/seko70/tm-atmoburn/raw/refs/heads/main/abs-archivist/abs-archivist.user.js
@@ -63,9 +63,9 @@ const DEBUG = true;
     };
 
     const ScannerRelationMap = {
-        'Friend': Relation.Friend,
-        'No contact': Relation.Neutral,
-        'Peace': Relation.Neutral,
+        'friend': Relation.Friend,
+        'no contact': Relation.Neutral,
+        'peace': Relation.Neutral,
     }
 
     // --- Various helpers
@@ -534,11 +534,8 @@ const DEBUG = true;
         fixRelation: function (obj) {
             // string to relation code
             if (obj.relation) {
-                if (obj.relation in ScannerRelationMap) {
-                    obj.relation = ScannerRelationMap[obj.relation];
-                } else {
-                    obj.relation = obj.relation.trim()[0].toLowerCase();
-                }
+                obj.relation = obj.relation.trim().toLowerCase();
+                obj.relation = ScannerRelationMap[obj.relation] ?? obj.relation[0];
             }
             // scan: own fleets/colonies are displayed as "friend"; fuel bunker: no relationship for colony
             if (obj.player === Parsing.parsePlayerName()) {
@@ -680,13 +677,8 @@ const DEBUG = true;
         }
         // find navigation data panel
         const navData = parent.document.getElementById('navData');
-        xdebug('navData1=' + navData);
-        if (!navData) {
-            xdebug('No navData, parsing skipped');
-            return;
-        }
+        if (!navData) return;
         // parse fleet coordinates
-        xdebug('navData2=' + navData);
         Parsing.parseFleetCoordinates(navData, fleet);
         // parse fleet location (colony, world, system) if present
         const leftData = navData.querySelector('div#positionLeft');
