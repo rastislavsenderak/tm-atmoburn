@@ -1,4 +1,4 @@
-# AtmoBurn Services - AtmoBurn Services - Show Fleet Direction
+# AtmoBurn Services - Show Fleet Direction
 This is Tampermonkey (https://www.tampermonkey.net/) script for Atmoburn game (https://www.atmoburn.com/).
 
 ## What it does

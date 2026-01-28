@@ -105,7 +105,7 @@
         const elem = document.createElement('span');
         const bs = "&nbsp;&nbsp;&nbsp;"; // big HTML space
         const tooltip = `Horizontal: ${h == null ? '-' : h}º\nVertical: ${v}º`;
-        const dir = (h != null) ? `${arrowFromDeg(h)} (${compassFromDeg(h)})` : (v > 0) ? '(UP)' : (v < 0) ? '(DOWN)' : '(NONE)';
+        const dir = (h != null) ? `${arrowFromDeg(h)} (${compassFromDeg(h)})` : (v > 0) ? '(UP)' : (v < 0) ? '(DOWN)' : '-';
         elem.innerHTML = `${bs}<span style="font-size: larger" title="${tooltip}">${dir}</span>`;
         elem.style.color = "yellow";
         elem.title = "Horizontal direction (in o'clock notation), and vertical direction (in degrees)";
