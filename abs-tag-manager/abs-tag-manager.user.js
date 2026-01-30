@@ -2,7 +2,7 @@
 // @name         AtmoBurn Services - Tag Manager
 // @namespace    sk.seko
 // @license      MIT
-// @version      1.1.3
+// @version      1.2.0
 // @description  Simple fleet/colony tagging script; use ALT-T for tagging current fleet/colony
 // @match        https://*.atmoburn.com/*
 // @exclude    	 https://*.atmoburn.com/extras/view_universe.php*
@@ -14,23 +14,24 @@
 // ==/UserScript==
 
 /* Stored formats (examples):
-GM key: "colony::allTags" or "fleet::allTags"
+GM key: "origin::colony::allTags" or "origin::fleet::allTags"
     {
       "c123": ["t1", "t3"],
       "c245": ["t2"]
     }
-GM key: "colony::tagsById" or "fleet::tagsById"
+GM key: "origin::colony::tagsById" or "origin::fleet::tagsById"
     {
       "t1": { "name": "Urgent", "color": "#ff3b3b" },
       "t2": { "name": "Review", "color": "#3b82f6" },
       "t3": { "name": "Blocked", "color": "#f59e0b" }
     }
-GM key: "colony::tagIndexByName" or "fleet::tagIndexByName"
+GM key: "origin::colony::tagIndexByName" or "origin::fleet::tagIndexByName"
     {
         "urgent": "t1",
         "review": "t2",
         "blocked": "t3"
     }
+GM key: origin::t:__seq__": 22,
 */
 
 /* jshint esversion: 11 */
@@ -88,6 +89,7 @@ GM key: "colony::tagIndexByName" or "fleet::tagIndexByName"
     }
     #tm-tag-close:hover { background: rgba(255,255,255,0.06); color:#e5e7eb; }
     #tm-tag-modal main { padding: 10px 12px 12px 12px; }
+    .tm-deco-title { cursor:pointer; font-size:0.5em; }
     .tm-help { color:#9ca3af; font-size:12px; margin:0 0 8px 0; }
     .tm-row {
         display:grid;
@@ -339,9 +341,8 @@ GM key: "colony::tagIndexByName" or "fleet::tagIndexByName"
 
         function buildSuggestionPool() {
             const allTags = Object.values(gmGet(state.objectType, "tagsById", {}));
-            const usedTagNames = new Set(state.tags.map(t => t.name));
             const all = allTags
-                .filter(s => s && s.name && s.color && !usedTagNames.has(s.name))
+                .filter(s => s && s.name && s.color)
                 .map(s => ({name: s.name.slice(0, MAX_CHARS), color: s.color}));
             return [
                 ...new Map(all.map(item => [item.name, item])).values()
@@ -492,14 +493,41 @@ GM key: "colony::tagIndexByName" or "fleet::tagIndexByName"
 
         const ZWSP_RE = new RegExp(ZWSP + ".*$");
 
-        function decorateLink(node, tagIds, tagsById) {
-            let txt = node.innerHTML.replace(ZWSP_RE, "") + (tagIds.length ? `${ZWSP}&nbsp;` : "");
+        function decorateLink(node, tagIds, tagsById, isTitle) {
+            const name = node.innerHTML.replace(ZWSP_RE, "").trim();
+            let tags = "";
             for (const tagId of tagIds) {
                 const tag = tagsById[tagId].name;
                 const color = tagsById[tagId].color;
-                txt += `&nbsp;<span style="color:${color};white-space:nowrap;"><i class="fa-solid fa-tag"></i>${tag}</span>`
+                tags += `&nbsp;<span style="color:${color};white-space:nowrap;"><i class="fa-solid fa-tag"></i>${tag}</span>`
             }
-            node.innerHTML = txt;
+            if (isTitle) {
+                const tooltip = "Click to open tag manager";
+                const style = "cursor:pointer;font-size:0.5em;font-family:Rubik,sans-serif;letter-spacing:normal;"
+                if (!tags || tags.length === 0) tags = `&nbsp;<i class="fa-solid fa-tag"></i>`;
+                tags = `<span id="tm-page-tags" title="${tooltip}" style="${style}">${tags}</span>`;
+            }
+            const space = tags.length ? `${ZWSP}&nbsp;` : "";
+            node.innerHTML = `${name}${space}${tags}`;
+        }
+
+        function decorateColonyScreen(objectId, colonyTags, tagsById) {
+            console.log("decorateColonyScreen", objectId, colonyTags, tagsById);
+            const mid = byId('midcolumn');
+            const nodeToDecorate = mid.querySelector('.pagetitle > div.flex_center') ?? mid.querySelector('.pagetitle');
+            decorateLink(nodeToDecorate, colonyTags, tagsById, true)
+            byId('tm-page-tags')?.addEventListener("click", () => {
+                openDialog("colony", objectId);
+            });
+        }
+
+        function decorateFleetScreen(objectId, fleetTags, tagsById) {
+            const mid = byId('midcolumn');
+            const nodeToDecorate = mid.querySelector('.pagetitle > div.flex_center') ?? mid.querySelector('.pagetitle');
+            decorateLink(nodeToDecorate, fleetTags, tagsById, true)
+            byId('tm-page-tags')?.addEventListener("click", () => {
+                openDialog("fleet", objectId);
+            });
         }
 
         function decorateAllColonies(allTags, tagsById) {
@@ -530,18 +558,20 @@ GM key: "colony::tagIndexByName" or "fleet::tagIndexByName"
             }
         }
 
+        function openDialog(objectType, objectId) {
+            TagManagerUI.open({
+                objectType: objectType,
+                objectId: objectId,
+                title: `Tags for ${objectType} #${objectId}`,
+                onclose: function () {
+                    decorateSome(objectType, objectId);
+                }
+            });
+        }
+
         function addTagManagerListener(objectType, objectId) {
             document.addEventListener("keydown", e => {
-                if (e.altKey && e.key.toLowerCase() === "t") {
-                    TagManagerUI.open({
-                        objectType: objectType,
-                        objectId: objectId,
-                        title: `Tags for ${objectType} #${objectId}`,
-                        onclose: function () {
-                            decorateSome(objectType, objectId);
-                        }
-                    });
-                }
+                if (e.altKey && e.key.toLowerCase() === "t") openDialog(objectType, objectId);
             });
         }
 
@@ -555,25 +585,27 @@ GM key: "colony::tagIndexByName" or "fleet::tagIndexByName"
             console.error("Unknown objectType:", objectType);
         }
 
-        function decorateAll() {
-            decorateAllColonies(...TagManagerUI.getAllTags("colony"));
-            decorateAllFleets(...TagManagerUI.getAllTags("fleet"));
-        }
-
         try {
             const urlstr = document.URL;
+            const [allColonyTags, colonyTagsById] = TagManagerUI.getAllTags("colony");
+            const [allFleetTags, fleetTagsById] = TagManagerUI.getAllTags("fleet");
             if (urlstr.match(/atmoburn\.com\/view_colony\.php/i)) {
                 const objectId = parseIdFromURL(COLONY_ID_RE);
                 if (objectId) {
                     addTagManagerListener("colony", objectId);
+                    const colonyTags = allColonyTags[objectId];
+                    decorateColonyScreen(objectId, colonyTags ?? [], colonyTagsById);
                 }
             } else if (urlstr.match(/atmoburn\.com\/fleet\.php/i) || urlstr.match(/atmoburn\.com\/fleet\//i)) {
                 const objectId = parseIdFromURL(FLEET_ID_RE);
                 if (objectId) {
                     addTagManagerListener("fleet", objectId);
+                    const fleetTags = allFleetTags[objectId];
+                    decorateFleetScreen(objectId, fleetTags ?? [], fleetTagsById);
                 }
             }
-            decorateAll();
+            decorateAllColonies(allColonyTags, colonyTagsById);
+            decorateAllFleets(allFleetTags, fleetTagsById);
         } catch (e) {
             console.error('tags: error', e);
         }

@@ -10,7 +10,7 @@ Simple colony and fleet tagging script. Just that. See example screenshot bellow
 
 ## How to use
  1. Open colony or fleet screen.
- 2. Use ALT-T for tag management
+ 2. Use ALT-T for tag management, or click "tag" icon/symbol on screen title
  3. Add/remove tag(s)
  4. Check your colony and/or fleet menu (left/right column) - your tags should be visible now.
  5. More to come... see TODO list.  
@@ -28,10 +28,8 @@ Simple colony and fleet tagging script. Just that. See example screenshot bellow
 - Tags are never removed from storage, ever
 
 ## TODO list
-- Add icon to open Tag Manager, not only ALT-T
-- Show tags in other contexts - colony/fleet overview, global targets etc
+- Show tags in other contexts - colonies/fleets overview pages, global targets etc
 - Add filtering by tags - hide all NOT having the tag, hide all HAVING the tag
-- More colors/custom colors, customize size/style for tags
 - AUTOTAGS! Add criteria for autotagging, for example
   - when happines < 40 then add "Health" red tag
   - when iron < 10k then add "RES" red tag
