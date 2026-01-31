@@ -25,10 +25,9 @@ Simple colony and fleet tagging script. Just that. See example screenshot bellow
 > This is still under development. Beware!
 
 ## Known bugs
-- Tags are never removed from storage, ever
+- Tags are never removed from storage, ever; should be deleted if not used for ... 3 months?
 
 ## TODO list
-- Show tags in other contexts - colonies/fleets overview pages, global targets etc
 - Add filtering by tags - hide all NOT having the tag, hide all HAVING the tag
 - AUTOTAGS! Add criteria for autotagging, for example
   - when happines < 40 then add "Health" red tag

@@ -2,7 +2,7 @@
 // @name         AtmoBurn Services - Tag Manager
 // @namespace    sk.seko
 // @license      MIT
-// @version      1.2.1
+// @version      1.3.0
 // @description  Simple fleet/colony tagging script; use ALT-T for tagging current fleet/colony
 // @match        https://*.atmoburn.com/*
 // @exclude    	 https://*.atmoburn.com/extras/view_universe.php*
@@ -14,24 +14,24 @@
 // ==/UserScript==
 
 /* Stored formats (examples):
-GM key: "origin::colony::allTags" or "origin::fleet::allTags"
+GM key: "origin::colony::allTags" or "origin::fleet::allTags" (maps entity ID to list of tag IDs)
     {
       "c123": ["t1", "t3"],
       "c245": ["t2"]
     }
-GM key: "origin::colony::tagsById" or "origin::fleet::tagsById"
+GM key: "origin::colony::tagsById" or "origin::fleet::tagsById" (maps tag ID to tag attributes)
     {
       "t1": { "name": "Urgent", "color": "#ff3b3b" },
       "t2": { "name": "Review", "color": "#3b82f6" },
       "t3": { "name": "Blocked", "color": "#f59e0b" }
     }
-GM key: "origin::colony::tagIndexByName" or "origin::fleet::tagIndexByName"
+GM key: "origin::colony::tagIndexByName" or "origin::fleet::tagIndexByName" ("reverse" map - tag name to tag ID)
     {
         "urgent": "t1",
         "review": "t2",
         "blocked": "t3"
     }
-GM key: origin::t:__seq__": 22,
+GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
 */
 
 /* jshint esversion: 11 */
@@ -202,11 +202,9 @@ GM key: origin::t:__seq__": 22,
     </header>
     <main>
       <div class="tm-row">
-        <input id="tm-tag-name"
-               class="tm-input"
+        <input id="tm-tag-name" class="tm-input" 
                placeholder="tag name (max ${MAX_CHARS} chars); suggestions keep their color"
-               maxlength="${MAX_CHARS}"
-               list="tm-tag-suggestions" />
+               maxlength="${MAX_CHARS}" list="tm-tag-suggestions" />
         <button id="tm-tag-add" class="tm-btn">Add</button>
       </div>
       <datalist id="tm-tag-suggestions"></datalist>
@@ -221,6 +219,7 @@ GM key: origin::t:__seq__": 22,
 </div>
 `;
 
+    // Helper functio for creating element and setting it's attributes
     function el(tag, props = {}, ...children) {
         const e = document.createElement(tag);
         const {style, on, ...rest} = props;
@@ -232,7 +231,6 @@ GM key: origin::t:__seq__": 22,
     }
 
     const TagManagerUI = (() => {
-
         const PALETTE = [
             {name: "White", value: "#ffffff"},
             {name: "Yellow", value: "#ffff00"},
@@ -248,7 +246,6 @@ GM key: origin::t:__seq__": 22,
             {name: "Gray", value: "#9ca3af"},
         ];
         const DEFAULT_COLOR = PALETTE[0].value;
-
         const state = {
             objectId: "global",
             tags: [],
@@ -300,6 +297,10 @@ GM key: origin::t:__seq__": 22,
             return tagId;
         }
 
+        /*
+         * Loads and return "allTags" and "tagsById" values for specified object type (fleet or colony).
+         * If objectId is supplied, only tags for this object is returned.
+         */
         function getAllTags(objectType, objectId = null) {
             const allTags = gmGet(objectType, "allTags", {});
             const tagsById = gmGet(objectType, "tagsById", {});
@@ -416,8 +417,7 @@ GM key: origin::t:__seq__": 22,
                                 }
                             }
                         }, "✕")
-                    ))
-                    ;
+                    ));
                 });
             }
 
@@ -484,13 +484,12 @@ GM key: origin::t:__seq__": 22,
     (async () => {
         const FLEET_ID_RE = /(?:[?&]fleet=|\/fleet\/)(\d+)/;
         const COLONY_ID_RE = /[?&]colony=(\d+)/;
+        const ZWSP_RE = new RegExp(ZWSP + ".*$");
 
         function parseIdFromURL(pattern) {
             const m = document.URL.match(pattern);
             return (m && m[1]) ? Number(m[1]) : null;
         }
-
-        const ZWSP_RE = new RegExp(ZWSP + ".*$");
 
         function getTagsFragment(tagIds, tagsById) {
             const tags = [];
@@ -502,7 +501,7 @@ GM key: origin::t:__seq__": 22,
             return tags.join("");
         }
 
-        function decorateSideListLink(node, tagIds, tagsById) {
+        function decorateOneLink(node, tagIds, tagsById) {
             const name = node.innerHTML.replace(ZWSP_RE, "").trim();
             const tags = getTagsFragment(tagIds, tagsById);
             const space = tags.length ? `${ZWSP}&nbsp;` : "";
@@ -541,32 +540,48 @@ GM key: origin::t:__seq__": 22,
             });
         }
 
-        function decorateAllColonies(allTags, tagsById) {
-            const colonyList = document.getElementById('colonylist');
-            if (!colonyList) return;
+        function _decorateObjectList(allTags, tagsById, nodeSelector) {
             for (const [objectId, tagIds] of Object.entries(allTags)) {
-                colonyList.querySelectorAll(`a[href$="colony=${objectId}"]`).forEach((node) => {
+                nodeSelector(objectId).forEach((node) => {
                     try {
-                        decorateSideListLink(node, tagIds, tagsById);
+                        decorateOneLink(node, tagIds, tagsById);
                     } catch (e) {
-                        console.error(e.message, e);
+                        console.error(`TM: Can't decorate ${objectId}: ${e.message}`, e);
                     }
                 });
             }
         }
 
-        function decorateAllFleets(allTags, tagsById) {
+        function decorateColonySideList(allTags, tagsById) {
+            const colonyList = document.getElementById('colonylist');
+            if (!colonyList) return;
+            _decorateObjectList(allTags, tagsById, (objectId) => {
+                return colonyList.querySelectorAll(`a[href$="/view_colony.php?colony=${objectId}"]`);
+            });
+        }
+
+        function decorateOverviewColonies(allTags, tagsById) {
+            const colonyList = document.getElementById('coloniesContainer');
+            if (!colonyList) return;
+            _decorateObjectList(allTags, tagsById, (objectId) => {
+                return colonyList.querySelectorAll(`a[href$="/view_colony.php?colony=${objectId}"]`);
+            });
+        }
+
+        function decorateFleetSideList(allTags, tagsById) {
             const fleetList = document.getElementById('fleetlist');
             if (!fleetList) return;
-            for (const [objectId, tagIds] of Object.entries(allTags)) {
-                fleetList.querySelectorAll(`a[href$="fleet=${objectId}"]`).forEach((node) => {
-                    try {
-                        decorateSideListLink(node, tagIds, tagsById);
-                    } catch (e) {
-                        console.error(e.message, e);
-                    }
-                });
-            }
+            _decorateObjectList(allTags, tagsById, (objectId) => {
+                return fleetList.querySelectorAll(`a[href$="/fleet.php?fleet=${objectId}"]`)
+            });
+        }
+
+        function decorateOverviewFleets(allTags, tagsById) {
+            const fleetList = document.getElementById('fleetSort');
+            if (!fleetList) return;
+            _decorateObjectList(allTags, tagsById, (objectId) => {
+                return fleetList.querySelectorAll(`a[href$="/fleet.php?fleet=${objectId}"]`);
+            });
         }
 
         function openDialog(objectType, objectId) {
@@ -591,18 +606,18 @@ GM key: origin::t:__seq__": 22,
             switch (objectType) {
                 case "colony": {
                     const [allColonyTags, colonyTagsById] = TagManagerUI.getAllTags("colony", objectId);
-                    decorateAllColonies(allColonyTags, colonyTagsById);
+                    decorateColonySideList(allColonyTags, colonyTagsById);
                     decorateColonyScreen(objectId, allColonyTags[objectId] ?? [], colonyTagsById);
                     return;
                 }
                 case "fleet": {
                     const [allFleetTags, fleetTagsById] = TagManagerUI.getAllTags("fleet", objectId);
-                    decorateAllFleets(allFleetTags, fleetTagsById);
+                    decorateFleetSideList(allFleetTags, fleetTagsById);
                     decorateFleetScreen(objectId, allFleetTags[objectId] ?? [], fleetTagsById);
                     return;
                 }
             }
-            console.error("Unknown objectType:", objectType);
+            console.error("TM: decorateSome - unknown objectType:", objectType);
         }
 
         try {
@@ -623,11 +638,15 @@ GM key: origin::t:__seq__": 22,
                     const fleetTags = allFleetTags[objectId];
                     decorateFleetScreen(objectId, fleetTags ?? [], fleetTagsById);
                 }
+            } else if (urlstr.match(/atmoburn\.com\/overview.php\?view=1/i)) {
+                decorateOverviewColonies(allColonyTags, colonyTagsById);
+            } else if (urlstr.match(/atmoburn\.com\/overview.php\?view=2/i)) {
+                decorateOverviewFleets(allFleetTags, fleetTagsById);
             }
-            decorateAllColonies(allColonyTags, colonyTagsById);
-            decorateAllFleets(allFleetTags, fleetTagsById);
+            decorateColonySideList(allColonyTags, colonyTagsById);
+            decorateFleetSideList(allFleetTags, fleetTagsById);
         } catch (e) {
-            console.error('tags: error', e);
+            console.error('TM: error', e);
         }
 
     })();
