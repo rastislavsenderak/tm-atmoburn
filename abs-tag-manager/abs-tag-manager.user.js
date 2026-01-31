@@ -2,7 +2,7 @@
 // @name         AtmoBurn Services - Tag Manager
 // @namespace    sk.seko
 // @license      MIT
-// @version      1.2.0
+// @version      1.2.1
 // @description  Simple fleet/colony tagging script; use ALT-T for tagging current fleet/colony
 // @match        https://*.atmoburn.com/*
 // @exclude    	 https://*.atmoburn.com/extras/view_universe.php*
@@ -221,6 +221,16 @@ GM key: origin::t:__seq__": 22,
 </div>
 `;
 
+    function el(tag, props = {}, ...children) {
+        const e = document.createElement(tag);
+        const {style, on, ...rest} = props;
+        Object.assign(e, rest);
+        if (style) Object.assign(e.style, style);
+        if (on) Object.entries(on).forEach(([k, v]) => e.addEventListener(k, v));
+        children.forEach(c => e.append(c instanceof Node ? c : document.createTextNode(String(c))));
+        return e;
+    }
+
     const TagManagerUI = (() => {
 
         const PALETTE = [
@@ -236,7 +246,6 @@ GM key: origin::t:__seq__": 22,
             {name: "Violet", value: "#8b5cf6"},
             {name: "Pink", value: "#ec4899"},
             {name: "Gray", value: "#9ca3af"},
-            {name: "Black", value: "#000000"},
         ];
         const DEFAULT_COLOR = PALETTE[0].value;
 
@@ -264,16 +273,6 @@ GM key: origin::t:__seq__": 22,
 
         function gmSet(objType, baseKey, value) {
             GM_setValue(gmNsKey(typedKey(objType, baseKey)), value);
-        }
-
-        function el(tag, props = {}, ...children) {
-            const e = document.createElement(tag);
-            const {style, on, ...rest} = props;
-            Object.assign(e, rest);
-            if (style) Object.assign(e.style, style);
-            if (on) Object.entries(on).forEach(([k, v]) => e.addEventListener(k, v));
-            children.forEach(c => e.append(c instanceof Node ? c : document.createTextNode(String(c))));
-            return e;
         }
 
         function nextId(prefix = "t") {
@@ -493,39 +492,51 @@ GM key: origin::t:__seq__": 22,
 
         const ZWSP_RE = new RegExp(ZWSP + ".*$");
 
-        function decorateLink(node, tagIds, tagsById, isTitle) {
-            const name = node.innerHTML.replace(ZWSP_RE, "").trim();
-            let tags = "";
+        function getTagsFragment(tagIds, tagsById) {
+            const tags = [];
             for (const tagId of tagIds) {
                 const tag = tagsById[tagId].name;
                 const color = tagsById[tagId].color;
-                tags += `&nbsp;<span style="color:${color};white-space:nowrap;"><i class="fa-solid fa-tag"></i>${tag}</span>`
+                tags.push(`&nbsp;<span style="color:${color};white-space:nowrap;"><i class="fa-solid fa-tag"></i>${tag}</span>`);
             }
-            if (isTitle) {
-                const tooltip = "Click to open tag manager";
-                const style = "cursor:pointer;font-size:0.5em;font-family:Rubik,sans-serif;letter-spacing:normal;"
-                if (!tags || tags.length === 0) tags = `&nbsp;<i class="fa-solid fa-tag"></i>`;
-                tags = `<span id="tm-page-tags" title="${tooltip}" style="${style}">${tags}</span>`;
-            }
+            return tags.join("");
+        }
+
+        function decorateSideListLink(node, tagIds, tagsById) {
+            const name = node.innerHTML.replace(ZWSP_RE, "").trim();
+            const tags = getTagsFragment(tagIds, tagsById);
             const space = tags.length ? `${ZWSP}&nbsp;` : "";
             node.innerHTML = `${name}${space}${tags}`;
         }
 
-        function decorateColonyScreen(objectId, colonyTags, tagsById) {
-            console.log("decorateColonyScreen", objectId, colonyTags, tagsById);
-            const mid = byId('midcolumn');
-            const nodeToDecorate = mid.querySelector('.pagetitle > div.flex_center') ?? mid.querySelector('.pagetitle');
-            decorateLink(nodeToDecorate, colonyTags, tagsById, true)
-            byId('tm-page-tags')?.addEventListener("click", () => {
-                openDialog("colony", objectId);
+        function decorateTitle(node, tagIds, tagsById, clickHandler) {
+            const TM_TITLE_TAGS = 'tm-title-tags';
+            let tags = getTagsFragment(tagIds, tagsById);
+            if (!tags || !tags.length) tags = `&nbsp;<i class="fa-solid fa-tag"></i>`;
+            const span = byId(TM_TITLE_TAGS) || el("span", {
+                id: TM_TITLE_TAGS,
+                title: "Click to open tag manager",
+                style: {cursor: "pointer", "font-size": "0.5em", "font-family": "Rubik,sans-serif", "letter-spacing": "normal"},
+                on: {click: clickHandler}
             });
+            span.innerHTML = `&nbsp;&nbsp;${tags}`;
+            node.after(span);
+        }
+
+        function decorateColonyScreen(objectId, colonyTags, tagsById) {
+            const mid = byId('midcolumn');
+            const nodeToDecorate = mid?.querySelector('.pagetitle > div.flex_center') ?? mid?.querySelector('.pagetitle');
+            if (nodeToDecorate) {
+                decorateTitle(nodeToDecorate, colonyTags, tagsById, () => {
+                    openDialog("colony", objectId);
+                });
+            }
         }
 
         function decorateFleetScreen(objectId, fleetTags, tagsById) {
-            const mid = byId('midcolumn');
-            const nodeToDecorate = mid.querySelector('.pagetitle > div.flex_center') ?? mid.querySelector('.pagetitle');
-            decorateLink(nodeToDecorate, fleetTags, tagsById, true)
-            byId('tm-page-tags')?.addEventListener("click", () => {
+            const nodeToDecorate = byId('midcolumn')?.querySelector('#pageHeadLine');
+            if (!nodeToDecorate) return; // no title?
+            decorateTitle(nodeToDecorate, fleetTags, tagsById, function () {
                 openDialog("fleet", objectId);
             });
         }
@@ -536,7 +547,7 @@ GM key: origin::t:__seq__": 22,
             for (const [objectId, tagIds] of Object.entries(allTags)) {
                 colonyList.querySelectorAll(`a[href$="colony=${objectId}"]`).forEach((node) => {
                     try {
-                        decorateLink(node, tagIds, tagsById);
+                        decorateSideListLink(node, tagIds, tagsById);
                     } catch (e) {
                         console.error(e.message, e);
                     }
@@ -550,7 +561,7 @@ GM key: origin::t:__seq__": 22,
             for (const [objectId, tagIds] of Object.entries(allTags)) {
                 fleetList.querySelectorAll(`a[href$="fleet=${objectId}"]`).forEach((node) => {
                     try {
-                        decorateLink(node, tagIds, tagsById);
+                        decorateSideListLink(node, tagIds, tagsById);
                     } catch (e) {
                         console.error(e.message, e);
                     }
@@ -575,12 +586,21 @@ GM key: origin::t:__seq__": 22,
             });
         }
 
+        // decorates only specific entity/object (after tags changed for specific entity)
         function decorateSome(objectType, objectId) {
             switch (objectType) {
-                case "colony":
-                    return decorateAllColonies(...TagManagerUI.getAllTags("colony", objectId));
-                case "fleet":
-                    return decorateAllFleets(...TagManagerUI.getAllTags("fleet", objectId));
+                case "colony": {
+                    const [allColonyTags, colonyTagsById] = TagManagerUI.getAllTags("colony", objectId);
+                    decorateAllColonies(allColonyTags, colonyTagsById);
+                    decorateColonyScreen(objectId, allColonyTags[objectId] ?? [], colonyTagsById);
+                    return;
+                }
+                case "fleet": {
+                    const [allFleetTags, fleetTagsById] = TagManagerUI.getAllTags("fleet", objectId);
+                    decorateAllFleets(allFleetTags, fleetTagsById);
+                    decorateFleetScreen(objectId, allFleetTags[objectId] ?? [], fleetTagsById);
+                    return;
+                }
             }
             console.error("Unknown objectType:", objectType);
         }
