@@ -2,37 +2,18 @@
 // @name         AtmoBurn Services - Tag Manager
 // @namespace    sk.seko
 // @license      MIT
-// @version      1.3.0
+// @version      2.0.1
 // @description  Simple fleet/colony tagging script; use ALT-T for tagging current fleet/colony
-// @match        https://*.atmoburn.com/*
-// @exclude    	 https://*.atmoburn.com/extras/view_universe.php*
 // @updateURL    https://github.com/seko70/tm-atmoburn/raw/refs/heads/main/abs-tag-manager/abs-tag-manager.user.js
 // @downloadURL  https://github.com/seko70/tm-atmoburn/raw/refs/heads/main/abs-tag-manager/abs-tag-manager.user.js
 // @homepageURL  https://github.com/seko70/tm-atmoburn/blob/main/abs-tag-manager/README.md
+// @match        https://*.atmoburn.com/*
+// @exclude    	 https://*.atmoburn.com/extras/view_universe.php*
+// @require      https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
 // ==/UserScript==
-
-/* Stored formats (examples):
-GM key: "origin::colony::allTags" or "origin::fleet::allTags" (maps entity ID to list of tag IDs)
-    {
-      "c123": ["t1", "t3"],
-      "c245": ["t2"]
-    }
-GM key: "origin::colony::tagsById" or "origin::fleet::tagsById" (maps tag ID to tag attributes)
-    {
-      "t1": { "name": "Urgent", "color": "#ff3b3b" },
-      "t2": { "name": "Review", "color": "#3b82f6" },
-      "t3": { "name": "Blocked", "color": "#f59e0b" }
-    }
-GM key: "origin::colony::tagIndexByName" or "origin::fleet::tagIndexByName" ("reverse" map - tag name to tag ID)
-    {
-        "urgent": "t1",
-        "review": "t2",
-        "blocked": "t3"
-    }
-GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
-*/
 
 /* jshint esversion: 11 */
 /* jshint node: true */
@@ -202,7 +183,7 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
     </header>
     <main>
       <div class="tm-row">
-        <input id="tm-tag-name" class="tm-input" 
+        <input id="tm-tag-name" class="tm-input"
                placeholder="tag name (max ${MAX_CHARS} chars); suggestions keep their color"
                maxlength="${MAX_CHARS}" list="tm-tag-suggestions" />
         <button id="tm-tag-add" class="tm-btn">Add</button>
@@ -219,7 +200,48 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
 </div>
 `;
 
-    // Helper functio for creating element and setting it's attributes
+    // DB initialization
+    const db = new Dexie('AtmoBurnTagsDB');
+    db.version(1).stores({
+        colony: '&id',
+        fleet: '&id'
+    });
+
+    // Tag DB manipulation functions
+    class TagDB {
+        static async saveTags(objectType, id, tagList) {
+            return await db.table(objectType).put({id, tagList});
+        }
+
+        static async getTags(objectType, id) {
+            const record = await db.table(objectType).get(id);
+            return record ? record.tagList : [];
+        }
+
+        static async deleteRecord(objectType, id) {
+            return await db.table(objectType).delete(id);
+        }
+
+        // returns object/map: {"1093: [{"name": "OOF","color": "#ff0000"},...], ...}
+        static async getAllRecordsMap(objectType) {
+            const tagMap = new Map();
+            await db.table(objectType).each(record => {
+                tagMap.set(record.id, record.tagList);
+            });
+            return tagMap;
+        }
+
+        static async getUniqueTagNames(objectType) {
+            const allRecords = await db.table(objectType).toArray();
+            if (!allRecords || !allRecords.length) return [];
+            const uniqueNames = new Set(
+                allRecords.flatMap(record => (record.tagList || []).map(tag => tag.name).filter(name => name))
+            );
+            return Array.from(uniqueNames);
+        }
+    }
+
+    // Helper function for creating element and setting it's attributes
     function el(tag, props = {}, ...children) {
         const e = document.createElement(tag);
         const {style, on, ...rest} = props;
@@ -249,119 +271,63 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
         const state = {
             objectId: "global",
             tags: [],
-            currentColor: DEFAULT_COLOR,
-            onChange: () => {
-            }
+            currentColor: DEFAULT_COLOR
         };
 
         let modalEl = null;
 
-        function gmNsKey(baseKey) {
-            return `${location.host}::${baseKey}`;
-        }
-
-        function typedKey(objType, baseKey) {
-            return `${objType}:${baseKey}`;
-        }
-
-        function gmGet(objType, baseKey, defaultValue) {
-            return GM_getValue(gmNsKey(typedKey(objType, baseKey)), defaultValue);
-        }
-
-        function gmSet(objType, baseKey, value) {
-            GM_setValue(gmNsKey(typedKey(objType, baseKey)), value);
-        }
-
-        function nextId(prefix = "t") {
-            const k = "__seq__";
-            const n = gmGet(prefix, k, 0) + 1;
-            gmSet(prefix, k, n);
-            return `${prefix}${n.toString(36)}`;
-        }
-
-        function normName(name, color) {
-            return `${name.trim()}#${color.trim()}`.toLowerCase();
-        }
-
-        function getOrCreateTag(objectType, name, color) {
-            const tagsById = gmGet(objectType, "tagsById", {});
-            const tagIndexByName = gmGet(objectType, "tagIndexByName", {});
-            const key = normName(name, color);
-            const existing = tagIndexByName[key];
-            if (existing) return existing;
-            const tagId = nextId("t");
-            tagsById[tagId] = {name: name.trim(), color};
-            tagIndexByName[key] = tagId;
-            gmSet(objectType, "tagsById", tagsById);
-            gmSet(objectType, "tagIndexByName", tagIndexByName);
-            return tagId;
-        }
-
-        /*
-         * Loads and return "allTags" and "tagsById" values for specified object type (fleet or colony).
-         * If objectId is supplied, only tags for this object is returned.
-         */
-        function getAllTags(objectType, objectId = null) {
-            const allTags = gmGet(objectType, "allTags", {});
-            const tagsById = gmGet(objectType, "tagsById", {});
-            if (!objectId) return [allTags, tagsById];
-            const tags = {[objectId]: (allTags[objectId] ? allTags[objectId] : [])};
-            return [tags, tagsById];
-        }
-
         /*
          * Loads object tags (by object type), returns list of tags, in format: [{id:"t1","name":"Urgent","color":"#ff3b3b"},...]
          */
-        function loadObjectTags(objectType, objectId) {
-            const allTags = gmGet(objectType, "allTags", {});
-            const tagIds = allTags[objectId];
-            if (!tagIds || !tagIds.length) return [];
-            const tagsById = gmGet(objectType, "tagsById", {});
-            return tagIds.map(id => ({id, ...tagsById[id]}));
+        async function loadObjectTags(objectType, objectId) {
+            const objectTags = await TagDB.getTags(objectType, objectId);
+            return objectTags ? objectTags : [];
         }
 
-        function addTagToObject(objectType, objectId, tagId) {
-            const allTags = gmGet(objectType, "allTags", {});
-            const arr = allTags[objectId] ?? (allTags[objectId] = []);
-            if (!arr.includes(tagId)) arr.push(tagId);
-            gmSet(objectType, "allTags", allTags);
+        async function saveObjectTags(objectType, objectId, tagList) {
+            await TagDB.saveTags(objectType, objectId, tagList);
         }
 
-        function deleteTagFromObject(objectType, objectId, tagId) {
-            const allTags = gmGet(objectType, "allTags", {});
-            const tags = allTags[objectId];
-            if (!Array.isArray(tags)) return false; // no change
-            const idx = tags.indexOf(tagId);
-            if (idx === -1) return false; // tag not found
-            tags.splice(idx, 1);
-            if (tags.length === 0) delete allTags[objectId]; // fix empty records
-            gmSet(objectType, "allTags", allTags);
-            return true; // tags changed
+        async function addTagToObject(objectType, objectId, tagList, tagToAdd) {
+            tagList.push(tagToAdd);
+            await saveObjectTags(objectType, objectId, tagList);
         }
 
-        function buildSuggestionPool() {
-            const allTags = Object.values(gmGet(state.objectType, "tagsById", {}));
-            const all = allTags
-                .filter(s => s && s.name && s.color)
-                .map(s => ({name: s.name.slice(0, MAX_CHARS), color: s.color}));
-            return [
-                ...new Map(all.map(item => [item.name, item])).values()
-            ].sort((a, b) =>
-                a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-            );
+
+        async function deleteTagFromObject(objectType, objectId, tagList, tagToRemove) {
+            const originalLength = tagList.length;
+            // if already empty -> quit
+            if (!originalLength) return false;
+            // remove (all) matching tags from tagList
+            tagList.splice(0, tagList.length, ...tagList.filter(t => t.name !== tagToRemove.name || t.color !== tagToRemove.color));
+            // if nothing changed (deleted) -> quit
+            if (tagList.length === originalLength) return false;
+            // save new list or delete if empty
+            if (tagList.length) {
+                await saveObjectTags(objectType, objectId, tagList);
+            } else {
+                await TagDB.deleteRecord(objectType, objectId);
+            }
+            return true;
         }
 
-        function updateDatalist(prefix) {
+        async function buildSuggestionPool() {
+            const allTags = await TagDB.getUniqueTagNames(state.objectType);
+            if (!allTags || !allTags.length) return [];
+            return allTags.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        }
+
+        async function updateDatalist(prefix) {
             const dl = document.getElementById("tm-tag-suggestions");
             if (!dl) return;
-            const p = String(prefix || "").toLowerCase();
-            const pool = buildSuggestionPool();
+            const p = String(prefix || "");
+            const pool = await buildSuggestionPool();
             const matches = pool
-                .filter(s => !p || s.name.toLowerCase().startsWith(p))
-                .slice(0, 12);
+                .filter(s => !p || s.startsWith(p))
+                .slice(0, MAX_CHARS);
             dl.innerHTML = "";
             matches.forEach(s => {
-                dl.appendChild(el("option", {value: s.name}));
+                dl.appendChild(el("option", {value: s}));
             });
         }
 
@@ -409,10 +375,10 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
                         el("span", {style: {color: t.color}}, t.name),
                         el("button", {
                             className: "tm-del", on: {
-                                click: (e) => {
+                                click: async (e) => {
                                     e.stopPropagation();
-                                    deleteTagFromObject(state.objectType, state.objectId, state.tags[i].id);
-                                    state.tags = loadObjectTags(state.objectType, state.objectId);
+                                    await deleteTagFromObject(state.objectType, state.objectId, state.tags, state.tags[i]);
+                                    state.tags = await loadObjectTags(state.objectType, state.objectId);
                                     render();
                                 }
                             }
@@ -421,24 +387,20 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
                 });
             }
 
-            addBtn.addEventListener("click", () => {
-                const raw = (nameIn.value || "").trim().slice(0, MAX_CHARS);
-                if (!raw) return;
-                const tagId = getOrCreateTag(state.objectType, raw, state.currentColor)
-                addTagToObject(state.objectType, state.objectId, tagId);
-                state.tags = loadObjectTags(state.objectType, state.objectId);
+            addBtn.addEventListener("click", async () => {
+                const tagName = (nameIn.value || "").trim().slice(0, MAX_CHARS);
+                if (!tagName) return;
+                await addTagToObject(state.objectType, state.objectId, state.tags, {name: tagName, color: state.currentColor});
+                state.tags = await loadObjectTags(state.objectType, state.objectId);
                 nameIn.value = "";
-                updateDatalist("");
+                await updateDatalist("");
                 render();
-                state.onChange(structuredClone(state.tags));
             });
 
-            clearBtn.addEventListener("click", () => {
+            clearBtn.addEventListener("click", async () => {
                 if (!state.tags || !state.tags.length) return;
-                const allTags = gmGet(state.objectType, "allTags", {});
+                await TagDB.deleteRecord(state.objectType, state.objectId);
                 state.tags = [];
-                delete allTags[state.objectId];
-                gmSet(state.objectType, "allTags", allTags);
                 render();
             });
 
@@ -460,14 +422,14 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
             ensureModal._nameInput = nameIn;
         }
 
-        function open(opts = {}) {
+        async function open(opts = {}) {
             ensureModal();
             state.objectId = opts.objectId || "global";
-            state.objectType = opts.objectType || "object";
+            state.objectType = opts.objectType || "UNKNOWN";
             state.onclose = opts.onclose;
             ensureModal._titleEl.textContent = opts.title || "ABS Tag Manager";
-            state.tags = loadObjectTags(state.objectType, state.objectId);
-            updateDatalist("");
+            state.tags = await loadObjectTags(state.objectType, state.objectId);
+            await updateDatalist("");
             ensureModal._render();
             ensureModal._backdrop.style.display = "block";
             setTimeout(() => ensureModal._nameInput.focus(), 0);
@@ -478,7 +440,57 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
             if (state.onclose) setTimeout(state.onclose, 100);
         }
 
-        return {open, getAllTags};
+        /*
+         * This is temporaru function for migration of pre-v2.0 data (GM_setValue) to 2.x data (IndexedDB); will be removed in v2.5+
+         */
+        async function oneTimeMigration() {
+            function gmNsKey(baseKey) {
+                return `${location.host}::${baseKey}`;
+            }
+
+            function typedKey(objType, baseKey) {
+                return `${objType}:${baseKey}`;
+            }
+
+            function gmGet(objType, baseKey, defaultValue) {
+                return GM_getValue(gmNsKey(typedKey(objType, baseKey)), defaultValue);
+            }
+
+            async function migrateOnce(objectType) {
+                // get all legacy data
+                const tagsById = gmGet(objectType, "tagsById", {});
+                const allTags = gmGet(objectType, "allTags", {});
+                // transaction for safe migration
+                await db.transaction('rw', db.table(objectType), async () => {
+                    const migrationPromises = Object.entries(allTags).map(async ([entityId, tagIds]) => {
+                        const tags = tagIds.map(tagId => {
+                            const tagInfo = tagsById[tagId];
+                            return tagInfo ? {name: tagInfo.name, color: tagInfo.color} : null;
+                        }).filter(Boolean);
+                        await db.table(objectType).put({id: Number(entityId), tagList: tags});
+                    });
+                    await Promise.all(migrationPromises);
+                });
+                // after successfull migration delete legacy data
+                GM_deleteValue(gmNsKey(typedKey(objectType, "tagsById")));
+                GM_deleteValue(gmNsKey(typedKey(objectType, "allTags")));
+                GM_deleteValue(gmNsKey(typedKey(objectType, "tagIndexByName")));
+                GM_deleteValue(gmNsKey(typedKey("t", "__seq__")));
+            }
+
+            for (const objectType of ["colony", "fleet"]) {
+                try {
+                    if (gmGet(objectType, "allTags", null) === null) continue; // already migrated
+                    console.info(`TM: Trying to migrate '${objectType}' ...`);
+                    await migrateOnce(objectType);
+                    console.info(`TM: Migration of '${objectType}' finished OK`);
+                } catch (e) {
+                    console.error(`TM: Migration of '${objectType}' failed`, e);
+                }
+            }
+        }
+
+        return {open, oneTimeMigration};
     })();
 
     (async () => {
@@ -491,27 +503,26 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
             return (m && m[1]) ? Number(m[1]) : null;
         }
 
-        function getTagsFragment(tagIds, tagsById) {
-            const tags = [];
-            for (const tagId of tagIds) {
-                const tag = tagsById[tagId].name;
-                const color = tagsById[tagId].color;
-                tags.push(`&nbsp;<span style="color:${color};white-space:nowrap;"><i class="fa-solid fa-tag"></i>${tag}</span>`);
+        function getTagsFragment(tagList) {
+            if (!tagList || !tagList.length) return "";
+            const chips = [];
+            for (const tag of tagList) {
+                chips.push(`&nbsp;<span style="color:${tag.color};white-space:nowrap;"><i class="fa-solid fa-tag"></i>${tag.name}</span>`);
             }
-            return tags.join("");
+            return chips.join("");
         }
 
-        function decorateOneLink(node, tagIds, tagsById) {
+        function decorateOneLink(node, tagList) {
             const name = node.innerHTML.replace(ZWSP_RE, "").trim();
-            const tags = getTagsFragment(tagIds, tagsById);
+            const tags = getTagsFragment(tagList);
             const space = tags.length ? `${ZWSP}&nbsp;` : "";
             node.innerHTML = `${name}${space}${tags}`;
         }
 
-        function decorateTitle(node, tagIds, tagsById, clickHandler) {
-            const TM_TITLE_TAGS = 'tm-title-tags';
-            let tags = getTagsFragment(tagIds, tagsById);
+        function decorateTitle(node, tagList, clickHandler) {
+            let tags = getTagsFragment(tagList);
             if (!tags || !tags.length) tags = `&nbsp;<i class="fa-solid fa-tag"></i>`;
+            const TM_TITLE_TAGS = 'tm-title-tags';
             const span = byId(TM_TITLE_TAGS) || el("span", {
                 id: TM_TITLE_TAGS,
                 title: "Click to open tag manager",
@@ -522,29 +533,30 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
             node.after(span);
         }
 
-        function decorateColonyScreen(objectId, colonyTags, tagsById) {
+        function decorateColonyScreen(objectId, colonyTags) {
             const mid = byId('midcolumn');
             const nodeToDecorate = mid?.querySelector('.pagetitle > div.flex_center') ?? mid?.querySelector('.pagetitle');
             if (nodeToDecorate) {
-                decorateTitle(nodeToDecorate, colonyTags, tagsById, () => {
+                decorateTitle(nodeToDecorate, colonyTags, () => {
                     openDialog("colony", objectId);
                 });
             }
         }
 
-        function decorateFleetScreen(objectId, fleetTags, tagsById) {
+        function decorateFleetScreen(objectId, fleetTags) {
             const nodeToDecorate = byId('midcolumn')?.querySelector('#pageHeadLine');
             if (!nodeToDecorate) return; // no title?
-            decorateTitle(nodeToDecorate, fleetTags, tagsById, function () {
+            decorateTitle(nodeToDecorate, fleetTags, function () {
                 openDialog("fleet", objectId);
             });
         }
 
-        function _decorateObjectList(allTags, tagsById, nodeSelector) {
-            for (const [objectId, tagIds] of Object.entries(allTags)) {
+        function _decorateObjectList(allTags, nodeSelector) {
+            for (const [objectId, tags] of allTags) {
+                if (!objectId || !tags) return;
                 nodeSelector(objectId).forEach((node) => {
                     try {
-                        decorateOneLink(node, tagIds, tagsById);
+                        decorateOneLink(node, tags);
                     } catch (e) {
                         console.error(`TM: Can't decorate ${objectId}: ${e.message}`, e);
                     }
@@ -552,26 +564,26 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
             }
         }
 
-        function decorateColonySideList(allTags, tagsById) {
+        function decorateColonySideList(allTags) {
             const colonyList = document.getElementById('colonylist');
             if (!colonyList) return;
-            _decorateObjectList(allTags, tagsById, (objectId) => {
+            _decorateObjectList(allTags, (objectId) => {
                 return colonyList.querySelectorAll(`a[href$="/view_colony.php?colony=${objectId}"]`);
             });
         }
 
-        function decorateOverviewColonies(allTags, tagsById) {
+        function decorateOverviewColonies(colonyTags) {
             const colonyList = document.getElementById('coloniesContainer');
             if (!colonyList) return;
-            _decorateObjectList(allTags, tagsById, (objectId) => {
+            _decorateObjectList(colonyTags, (objectId) => {
                 return colonyList.querySelectorAll(`a[href$="/view_colony.php?colony=${objectId}"]`);
             });
         }
 
-        function decorateFleetSideList(allTags, tagsById) {
+        function decorateFleetSideList(fleetTags) {
             const fleetList = document.getElementById('fleetlist');
             if (!fleetList) return;
-            _decorateObjectList(allTags, tagsById, (objectId) => {
+            _decorateObjectList(fleetTags, (objectId) => {
                 return fleetList.querySelectorAll(`a[href$="/fleet.php?fleet=${objectId}"]`)
             });
         }
@@ -602,49 +614,50 @@ GM key: origin::t:__seq__": 22 (sequencer - used for generating tag IDs)
         }
 
         // decorates only specific entity/object (after tags changed for specific entity)
-        function decorateSome(objectType, objectId) {
+        async function decorateSome(objectType, objectId) {
             switch (objectType) {
                 case "colony": {
-                    const [allColonyTags, colonyTagsById] = TagManagerUI.getAllTags("colony", objectId);
-                    decorateColonySideList(allColonyTags, colonyTagsById);
-                    decorateColonyScreen(objectId, allColonyTags[objectId] ?? [], colonyTagsById);
+                    const colonyTags = await TagDB.getTags("colony", objectId)
+                    decorateColonySideList(new Map().set(objectId, colonyTags));
+                    decorateColonyScreen(objectId, colonyTags);
                     return;
                 }
                 case "fleet": {
-                    const [allFleetTags, fleetTagsById] = TagManagerUI.getAllTags("fleet", objectId);
-                    decorateFleetSideList(allFleetTags, fleetTagsById);
-                    decorateFleetScreen(objectId, allFleetTags[objectId] ?? [], fleetTagsById);
+                    const fleetTags = await TagDB.getTags("fleet", objectId)
+                    decorateFleetSideList(new Map().set(objectId, fleetTags));
+                    decorateFleetScreen(objectId, fleetTags);
                     return;
                 }
             }
             console.error("TM: decorateSome - unknown objectType:", objectType);
         }
 
+        // FIXME
+        await TagManagerUI.oneTimeMigration();
+
         try {
             const urlstr = document.URL;
-            const [allColonyTags, colonyTagsById] = TagManagerUI.getAllTags("colony");
-            const [allFleetTags, fleetTagsById] = TagManagerUI.getAllTags("fleet");
+            const colonyTags = await TagDB.getAllRecordsMap("colony")
+            const fleetTags = await TagDB.getAllRecordsMap("fleet")
             if (urlstr.match(/atmoburn\.com\/view_colony\.php/i)) {
                 const objectId = parseIdFromURL(COLONY_ID_RE);
                 if (objectId) {
                     addTagManagerListener("colony", objectId);
-                    const colonyTags = allColonyTags[objectId];
-                    decorateColonyScreen(objectId, colonyTags ?? [], colonyTagsById);
+                    if (colonyTags) decorateColonyScreen(objectId, colonyTags.get(objectId));
                 }
             } else if (urlstr.match(/atmoburn\.com\/fleet\.php/i) || urlstr.match(/atmoburn\.com\/fleet\//i)) {
                 const objectId = parseIdFromURL(FLEET_ID_RE);
                 if (objectId) {
                     addTagManagerListener("fleet", objectId);
-                    const fleetTags = allFleetTags[objectId];
-                    decorateFleetScreen(objectId, fleetTags ?? [], fleetTagsById);
+                    if (fleetTags) decorateFleetScreen(objectId, fleetTags.get(objectId));
                 }
             } else if (urlstr.match(/atmoburn\.com\/overview.php\?view=1/i)) {
-                decorateOverviewColonies(allColonyTags, colonyTagsById);
+                decorateOverviewColonies(colonyTags);
             } else if (urlstr.match(/atmoburn\.com\/overview.php\?view=2/i)) {
-                decorateOverviewFleets(allFleetTags, fleetTagsById);
+                decorateOverviewFleets(fleetTags);
             }
-            decorateColonySideList(allColonyTags, colonyTagsById);
-            decorateFleetSideList(allFleetTags, fleetTagsById);
+            decorateColonySideList(colonyTags);
+            decorateFleetSideList(fleetTags);
         } catch (e) {
             console.error('TM: error', e);
         }

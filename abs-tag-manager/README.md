@@ -8,6 +8,11 @@ Simple colony and fleet tagging script. Just that. See example screenshot bellow
 - You should have Tampermonkey (https://www.tampermonkey.net/) or equivalent
 - Open `abs-tag-manager.user.js` file and go "Raw" in your browser - Tampermonkey should offer you "Install" button - and thats it.
 
+> [!WARNING]
+> Pre-v2.0 versions of this scripts uses GM_setValue for storage; in v2.0+ it changes to IndexedDB (AtmoBurnTagsDB).
+> To preserve your data (tags) already create, one-time migraction is executed (once) and GM-based storage keys are deleted.
+> This feature (one-time migration) will be deleted in v2.5 - after couple of weeks, perhaps.
+
 ## How to use
  1. Open colony or fleet screen.
  2. Use ALT-T for tag management, or click "tag" icon/symbol on screen title
@@ -16,18 +21,16 @@ Simple colony and fleet tagging script. Just that. See example screenshot bellow
  5. More to come... see TODO list.  
 
 ## How it is implemented
-- No remote calls, just screen parsing (your colony/fleet ID), local storage (tags) and (of course) modifying current page (adding tags).
-- This script uses only local (script) storage, i.e. GM_setValue/GM_getValue. Once installed, in your Tampermonkey menu / Storage tab you can see your data in JSON format. You can even edit it.
-- You don't lose your data when your browser history/cookies get deleted. You may lose your data when you **unistall** the script (or browser).
+- No remote calls, just screen parsing (your colony/fleet ID), local (browser) storage and (of course) modifying current page (displaying tags).
+- This script uses IndexedDB AtmoBurnTagsDB storage. 
+- You **may** lose your data when your browser history/cookies get deleted.
 
 ## Status
 > [!WARNING]
 > This is still under development. Beware!
 
-## Known bugs
-- Tags are never removed from storage, ever; should be deleted if not used for ... 3 months?
-
 ## TODO list
+- Remove tags (from storage) once object (colony/fleet) cease to exist
 - Add filtering by tags - hide all NOT having the tag, hide all HAVING the tag
 - AUTOTAGS! Add criteria for autotagging, for example
   - when happines < 40 then add "Health" red tag
